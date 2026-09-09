@@ -1,8 +1,9 @@
-Vitals 1.0.0 for Windows
+Vitals 1.1.0 for Windows
 ========================
 
 A portable live utilization monitor for THIS PC: CPU (per core), memory,
-disk, network, uptime, and thermal when Windows exposes a sensor.
+disk, network, process tree (name, PID, CPU, memory), uptime, and thermal
+when Windows exposes a sensor.
 
 Nothing is installed. Nothing is sent off this machine.
 

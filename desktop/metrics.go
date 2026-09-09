@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -55,6 +56,14 @@ type netOut struct {
 	Address  string  `json:"address"`
 }
 
+type procRow struct {
+	Pid  int32   `json:"pid"`
+	Ppid int32   `json:"ppid"`
+	Name string  `json:"name"`
+	CPU  float64 `json:"cpu"`
+	RSS  uint64  `json:"rss"`
+}
+
 type procOut struct {
 	Pid      int32   `json:"pid"`
 	Name     string  `json:"name"`
@@ -78,8 +87,9 @@ type snapshot struct {
 	Memory     memOut    `json:"memory"`
 	Disks      []diskOut `json:"disks"`
 	Network    []netOut  `json:"network"`
-	Process    procOut   `json:"process"`
-	ThermalC   *float64  `json:"thermalC"`
+	Process    procOut    `json:"process"`
+	Processes  []procRow  `json:"processes"`
+	ThermalC   *float64   `json:"thermalC"`
 	Loadavg    [3]float64 `json:"loadavg"`
 	LoadPress  float64   `json:"loadPressure"`
 }
@@ -95,7 +105,14 @@ var (
 	prevTs   time.Time
 	prevNet  map[string]net.IOCountersStat
 	startAt  = time.Now()
+	procMu   sync.Mutex
+	prevProc = map[int32]procPrev{}
 )
+
+type procPrev struct {
+	total float64
+	ts    time.Time
+}
 
 func collect() snapshot {
 	now := time.Now()
@@ -263,10 +280,56 @@ func collect() snapshot {
 		Disks:     disks,
 		Network:   nets,
 		Process:   proc,
+		Processes: collectProcs(),
 		ThermalC:  thermal,
 		Loadavg:   load,
 		LoadPress: press,
 	}
+}
+
+func collectProcs() []procRow {
+	list, err := process.Processes()
+	if err != nil {
+		return nil
+	}
+	now := time.Now()
+	procMu.Lock()
+	defer procMu.Unlock()
+	next := make(map[int32]procPrev, len(list))
+	out := make([]procRow, 0, len(list))
+	for _, p := range list {
+		pid := p.Pid
+		name, _ := p.Name()
+		if name == "" {
+			name = "pid " + strconv.Itoa(int(pid))
+		}
+		ppid, _ := p.Ppid()
+		if ppid == pid {
+			ppid = 0
+		}
+		var rss uint64
+		if mi, err := p.MemoryInfo(); err == nil && mi != nil {
+			rss = mi.RSS
+		}
+		cpu := 0.0
+		total := 0.0
+		if t, err := p.Times(); err == nil && t != nil {
+			total = t.User + t.System
+			if prev, ok := prevProc[pid]; ok {
+				dt := now.Sub(prev.ts).Seconds()
+				if dt > 0.05 {
+					cpu = (total - prev.total) / dt * 100
+					if cpu < 0 {
+						cpu = 0
+					}
+				}
+			}
+		}
+		next[pid] = procPrev{total: total, ts: now}
+		out = append(out, procRow{Pid: pid, Ppid: ppid, Name: name, CPU: cpu, RSS: rss})
+	}
+	prevProc = next
+	return out
 }
 
 func busyPct(prev, next cpuTimes) float64 {

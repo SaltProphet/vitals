@@ -232,6 +232,64 @@
         background: var(--inset);
       }
       .stack i { display: block; height: 100%; }
+      .pq {
+        width: 100%;
+        height: 2.75rem;
+        margin: 0.85rem 0 0;
+        border: 0;
+        border-radius: 0.75rem;
+        background: var(--inset);
+        color: var(--fg);
+        padding: 0 0.85rem;
+        font-size: 0.875rem;
+        font-family: inherit;
+        outline: none;
+      }
+      .pq::placeholder { color: var(--subtle); }
+      .pq:focus { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+      .phead, .prow {
+        display: grid;
+        grid-template-columns: minmax(0,1fr) 4.5rem 4.25rem 5.5rem;
+        gap: 0.5rem;
+        align-items: center;
+      }
+      .phead {
+        padding: 0.5rem 0.25rem 0.4rem;
+        font-size: 0.65rem;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--subtle);
+      }
+      .phead span:not(:first-child), .prow .num { text-align: right; }
+      .ptree {
+        max-height: 28rem;
+        overflow: auto;
+      }
+      .prow {
+        padding: 0.35rem 0.25rem;
+        border-radius: 0.5rem;
+        font-size: 0.8125rem;
+      }
+      .prow.self { background: var(--raised); }
+      .prow .name {
+        display: flex;
+        align-items: center;
+        gap: 0.15rem;
+        min-width: 0;
+      }
+      .prow .name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .twist {
+        width: 1.75rem; height: 1.75rem;
+        border: 0; border-radius: 0.4rem;
+        background: transparent; color: var(--muted);
+        display: inline-flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+      }
+      .twist svg { width: 0.85rem; height: 0.85rem; transition: transform 150ms ease; }
+      .twist.open svg { transform: rotate(90deg); }
+      .twist:hover { background: var(--inset); color: var(--fg); }
+      .ph { width: 1.75rem; height: 1.75rem; flex-shrink: 0; }
       footer { text-align: center; font-size: 0.75rem; color: var(--subtle); }
     </style>
   </head>
@@ -337,6 +395,16 @@
       </div>
 
       <section class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h2>Processes</h2>
+          <span id="proc-n" class="mono subtle" style="font-size:0.75rem">0</span>
+        </div>
+        <input class="pq" id="proc-q" type="search" placeholder="Filter by name or pid" aria-label="Filter processes" />
+        <div class="phead"><span>Name</span><span>PID</span><span>CPU</span><span>Memory</span></div>
+        <div class="ptree" id="proc-tree"></div>
+      </section>
+
+      <section class="panel">
         <h2>This app</h2>
         <p class="subtle" style="font-size:0.8rem;margin:0.75rem 0 1rem">
           Running on this PC. Spin cores loads every logical processor for 8 seconds so the gauges move.
@@ -363,6 +431,9 @@
       let timer = null;
       let last = null;
       const warn = 70, crit = 90;
+      const expanded = new Set();
+      let treeSeeded = false;
+      let procQuery = "";
 
       const fmtPct = (n, d = 1) => n == null || Number.isNaN(n) ? "—" : n.toFixed(d) + "%";
       const clamp = (n) => Math.max(0, Math.min(100, n || 0));
@@ -374,6 +445,11 @@
         return (n < 0 ? "-" : "") + v.toFixed(i === 0 ? 0 : v >= 100 ? 0 : 1) + " " + u[i];
       }
       function fmtRate(n) { return n == null ? "—" : fmtBytes(n) + "/s"; }
+      function esc(s) {
+        return String(s).replace(/[&<>"']/g, (c) => ({
+          "&":"&","<":"<",">":">","\"":""","'":"&#39;"
+        }[c]));
+      }
       function fmtUp(s) {
         s = Math.max(0, Math.floor(s || 0));
         const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
@@ -503,9 +579,103 @@
         $("spin").disabled = !!s.process.spinning;
         $("spin").textContent = s.process.spinning ? "Spinning cores…" : "Spin cores 8s";
 
+        renderTree(s.processes || [], s.process.pid);
+
         history.push({ cpu: s.cpu, mem: s.memory.usedPct });
         if (history.length > 90) history.shift();
         drawChart($("chart"), history);
+      }
+
+      function forest(list) {
+        const byPid = new Map();
+        list.forEach((p) => byPid.set(p.pid, p));
+        const kids = new Map();
+        const roots = [];
+        const hot = (a, b) => (b.cpu - a.cpu) || (b.rss - a.rss) || String(a.name).localeCompare(b.name);
+        list.forEach((p) => {
+          if (p.ppid !== p.pid && byPid.has(p.ppid)) {
+            if (!kids.has(p.ppid)) kids.set(p.ppid, []);
+            kids.get(p.ppid).push(p);
+          } else roots.push(p);
+        });
+        kids.forEach((arr) => arr.sort(hot));
+        roots.sort(hot);
+        const walk = (p, stack) => {
+          if (stack.has(p.pid)) return { p, children: [] };
+          stack.add(p.pid);
+          const children = (kids.get(p.pid) || []).map((c) => walk(c, stack));
+          stack.delete(p.pid);
+          return { p, children };
+        };
+        return roots.map((r) => walk(r, new Set()));
+      }
+
+      function matchKeep(nodes, q) {
+        if (!q) return null;
+        const keep = new Set();
+        const visit = (n, anc) => {
+          const self = String(n.p.name).toLowerCase().includes(q) || String(n.p.pid).includes(q);
+          let hit = self;
+          const next = anc.concat(n.p.pid);
+          n.children.forEach((c) => { if (visit(c, next)) hit = true; });
+          if (hit) {
+            keep.add(n.p.pid);
+            anc.forEach((a) => keep.add(a));
+            if (self) {
+              const mark = (x) => { keep.add(x.p.pid); x.children.forEach(mark); };
+              mark(n);
+            }
+          }
+          return hit;
+        };
+        nodes.forEach((n) => visit(n, []));
+        return keep;
+      }
+
+      function flatten(nodes, open, keep) {
+        const out = [];
+        const visit = (n, depth) => {
+          if (keep && !keep.has(n.p.pid)) return;
+          const kids = keep ? n.children.filter((c) => keep.has(c.p.pid)) : n.children;
+          out.push({ p: n.p, depth, has: kids.length > 0 });
+          if (kids.length && open.has(n.p.pid)) kids.forEach((c) => visit(c, depth + 1));
+        };
+        nodes.forEach((n) => visit(n, 0));
+        return out;
+      }
+
+      function renderTree(list, selfPid) {
+        $("proc-n").textContent = String(list.length);
+        const nodes = forest(list);
+        if (!treeSeeded && nodes.length) {
+          treeSeeded = true;
+          nodes.forEach((n) => expanded.add(n.p.pid));
+        }
+        const q = procQuery.trim().toLowerCase();
+        const keep = matchKeep(nodes, q);
+        const open = keep ? keep : expanded;
+        const rows = flatten(nodes, open, keep);
+        if (!list.length) {
+          $("proc-tree").innerHTML = '<p class="muted" style="margin:0.5rem 0 0">Process list unavailable.</p>';
+          return;
+        }
+        if (!rows.length) {
+          $("proc-tree").innerHTML = '<p class="muted" style="margin:0.5rem 0 0">No matching processes.</p>';
+          return;
+        }
+        const chev = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 6 15 12 9 18"/></svg>';
+        $("proc-tree").innerHTML = rows.map((r) => {
+          const t = tone(r.p.cpu);
+          const isOpen = open.has(r.p.pid);
+          const btn = r.has
+            ? '<button class="twist'+(isOpen?' open':'')+'" data-pid="'+r.p.pid+'" aria-label="'+(isOpen?'Collapse':'Expand')+'">'+chev+'</button>'
+            : '<span class="ph"></span>';
+          return '<div class="prow'+(r.p.pid===selfPid?' self':'')+'" style="padding-left:calc(0.25rem + '+r.depth+' * 0.85rem)">' +
+            '<div class="name">'+btn+'<span title="'+esc(r.p.name)+'">'+esc(r.p.name)+'</span></div>' +
+            '<span class="num mono subtle">'+r.p.pid+'</span>' +
+            '<span class="num mono '+(t==='ok'?'subtle':'tone-'+t)+'">'+fmtPct(r.p.cpu, r.p.cpu>=10?0:1)+'</span>' +
+            '<span class="num mono muted">'+fmtBytes(r.p.rss)+'</span></div>';
+        }).join("");
       }
 
       function clock() {
@@ -552,6 +722,18 @@
       });
       clock();
       setInterval(clock, 1000);
+      $("proc-q").oninput = () => {
+        procQuery = $("proc-q").value;
+        if (last) renderTree(last.processes || [], last.process.pid);
+      };
+      $("proc-tree").onclick = (e) => {
+        const btn = e.target.closest && e.target.closest("button.twist");
+        if (!btn || procQuery.trim()) return;
+        const pid = Number(btn.dataset.pid);
+        if (expanded.has(pid)) expanded.delete(pid);
+        else expanded.add(pid);
+        if (last) renderTree(last.processes || [], last.process.pid);
+      };
       loop();
     </script>
   </body>
