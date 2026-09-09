@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vitals</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        --bg: #080809;
+        --surface: #111113;
+        --raised: #18181b;
+        --inset: #0c0c0e;
+        --fg: #ececee;
+        --muted: #8e8e96;
+        --subtle: #5e5e66;
+        --accent: #b7c0cc;
+        --accent-fg: #0c0c0e;
+        --line: #2a2a30;
+        --ok: #6a9a7c;
+        --warn: #c4a35a;
+        --crit: #c46b6b;
+        --font: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+        --mono: "Cascadia Mono", Consolas, "SF Mono", ui-monospace, monospace;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--font);
+        -webkit-font-smoothing: antialiased;
+      }
+      button { font-family: inherit; cursor: pointer; }
+      button:disabled { cursor: default; opacity: 0.4; }
+      body { min-height: 100dvh; }
+      .wrap {
+        max-width: 72rem;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 3rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+      }
+      @media (min-width: 640px) {
+        .wrap { padding: 2rem 1.5rem 4rem; gap: 1.5rem; }
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.75rem;
+        font-weight: 500;
+        letter-spacing: -0.03em;
+      }
+      h2 {
+        margin: 0;
+        font-size: 0.75rem;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .muted { color: var(--muted); }
+      .subtle { color: var(--subtle); }
+      .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+      .panel {
+        background: var(--surface);
+        box-shadow: 0 0 0 1px rgba(255,255,255,0.07);
+        border-radius: 1.5rem;
+        padding: 1.1rem 1.15rem;
+      }
+      .header {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      @media (min-width: 640px) {
+        .header { flex-direction: row; align-items: flex-end; justify-content: space-between; }
+      }
+      .row { display: flex; align-items: center; gap: 0.75rem; }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        border-radius: 999px;
+        padding: 0.15rem 0.65rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        background: color-mix(in srgb, var(--ok) 15%, transparent);
+        color: var(--ok);
+      }
+      .badge.paused {
+        background: var(--raised);
+        color: var(--muted);
+      }
+      .dot {
+        width: 0.5rem; height: 0.5rem; border-radius: 999px;
+        background: var(--ok);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 45%, transparent);
+        animation: pulse 2s ease-out infinite;
+      }
+      .badge.paused .dot { background: var(--subtle); animation: none; box-shadow: none; }
+      @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 45%, transparent); }
+        70% { box-shadow: 0 0 0 6px transparent; }
+        100% { box-shadow: 0 0 0 0 transparent; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .dot { animation: none; }
+      }
+      .iconbtn {
+        width: 2.75rem; height: 2.75rem;
+        border: 0; border-radius: 0.75rem;
+        background: transparent; color: var(--muted);
+      }
+      .iconbtn:hover { background: var(--raised); color: var(--fg); }
+      .tiles {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+      }
+      @media (min-width: 1024px) {
+        .tiles { grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+      }
+      .tile {
+        min-height: 8rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
+      .big {
+        font-family: var(--mono);
+        font-size: 1.85rem;
+        font-weight: 500;
+        letter-spacing: -0.03em;
+        font-variant-numeric: tabular-nums;
+        margin: 0;
+      }
+      .tone-warn { color: var(--warn); }
+      .tone-crit { color: var(--crit); }
+      .meter {
+        height: 0.375rem;
+        border-radius: 999px;
+        background: var(--inset);
+        overflow: hidden;
+      }
+      .meter > i {
+        display: block;
+        height: 100%;
+        width: 100%;
+        transform-origin: left center;
+        background: var(--accent);
+        border-radius: 999px;
+        transition: transform 250ms cubic-bezier(0.22,1,0.36,1), background-color 250ms ease;
+      }
+      .meter > i.warn { background: var(--warn); }
+      .meter > i.crit { background: var(--crit); }
+      .grid2 {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+      @media (min-width: 1024px) {
+        .grid2 { grid-template-columns: 1fr 1fr; }
+      }
+      .kv { display: flex; justify-content: space-between; gap: 0.75rem; font-size: 0.75rem; }
+      .kv span:first-child { color: var(--subtle); }
+      .kv span:last-child { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+      .core { display: flex; align-items: center; gap: 0.5rem; }
+      .core b { width: 1.25rem; font-family: var(--mono); font-size: 0.75rem; color: var(--subtle); font-weight: 400; }
+      .core em { width: 3rem; text-align: right; font-style: normal; font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
+      .core .meter { flex: 1; }
+      .strip {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+      @media (min-width: 640px) { .strip { grid-template-columns: repeat(4, 1fr); } }
+      .btn {
+        height: 2.75rem;
+        padding: 0 1rem;
+        border: 0;
+        border-radius: 0.75rem;
+        background: var(--raised);
+        color: var(--fg);
+        font-size: 0.875rem;
+        font-weight: 500;
+        box-shadow: 0 0 0 1px rgba(255,255,255,0.07);
+      }
+      .btn:hover { box-shadow: 0 0 0 1px rgba(255,255,255,0.13); }
+      .btn.danger { background: color-mix(in srgb, var(--crit) 15%, transparent); color: var(--crit); box-shadow: none; }
+      .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+      .chart { height: 11rem; }
+      .chart svg { width: 100%; height: 100%; display: block; }
+      .seg {
+        display: flex;
+        background: var(--inset);
+        border-radius: 0.75rem;
+        padding: 0.2rem;
+      }
+      .seg button {
+        flex: 1;
+        height: 2.25rem;
+        border: 0;
+        border-radius: 0.5rem;
+        background: transparent;
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+      .seg button.on {
+        background: var(--raised);
+        color: var(--fg);
+        box-shadow: 0 0 0 1px rgba(255,255,255,0.07);
+      }
+      .hostline { margin: 0.35rem 0 0; font-size: 0.875rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .cpu-model { margin: 0.2rem 0 0; font-size: 0.75rem; color: var(--subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .alert {
+        background: color-mix(in srgb, var(--crit) 15%, transparent);
+        color: var(--crit);
+        border-radius: 0.9rem;
+        padding: 0.75rem 1rem;
+        font-size: 0.875rem;
+      }
+      .stack {
+        display: flex;
+        height: 0.625rem;
+        border-radius: 999px;
+        overflow: hidden;
+        background: var(--inset);
+      }
+      .stack i { display: block; height: 100%; }
+      footer { text-align: center; font-size: 0.75rem; color: var(--subtle); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="header">
+        <div>
+          <div class="row">
+            <h1>Vitals</h1>
+            <span id="live" class="badge"><span class="dot"></span><span id="live-label">Live</span></span>
+          </div>
+          <p class="hostline"><span id="host" class="mono" style="color:var(--fg)">—</span> · <span id="meta">reading this PC</span></p>
+          <p class="cpu-model" id="model"></p>
+        </div>
+        <div class="row">
+          <span id="clock" class="mono muted" style="font-size:0.875rem"></span>
+          <button class="iconbtn" id="pause" aria-label="Pause">Pause</button>
+          <button class="iconbtn" id="copy" aria-label="Copy snapshot">Copy</button>
+        </div>
+      </header>
+
+      <div id="alerts"></div>
+
+      <div class="tiles">
+        <article class="panel tile">
+          <h2>CPU</h2>
+          <div>
+            <p class="big" id="cpu">—</p>
+            <p class="subtle" id="cpu-d" style="margin:0.4rem 0 0;font-size:0.75rem"></p>
+          </div>
+          <div class="meter" role="meter" aria-label="CPU"><i id="cpu-m"></i></div>
+        </article>
+        <article class="panel tile">
+          <h2>Memory</h2>
+          <div>
+            <p class="big" id="mem">—</p>
+            <p class="subtle" id="mem-d" style="margin:0.4rem 0 0;font-size:0.75rem"></p>
+          </div>
+          <div class="meter" role="meter" aria-label="Memory"><i id="mem-m"></i></div>
+        </article>
+        <article class="panel tile">
+          <h2>Load</h2>
+          <div>
+            <p class="big" id="load">—</p>
+            <p class="subtle" id="load-d" style="margin:0.4rem 0 0;font-size:0.75rem"></p>
+          </div>
+          <div class="meter" role="meter" aria-label="Load"><i id="load-m"></i></div>
+        </article>
+        <article class="panel tile">
+          <h2>Disk</h2>
+          <div>
+            <p class="big" id="disk">—</p>
+            <p class="subtle" id="disk-d" style="margin:0.4rem 0 0;font-size:0.75rem"></p>
+          </div>
+          <div class="meter" role="meter" aria-label="Disk"><i id="disk-m"></i></div>
+        </article>
+      </div>
+
+      <section class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.75rem">
+          <h2>Last 90 samples</h2>
+          <span class="subtle" style="font-size:0.75rem">CPU and memory, percent</span>
+        </div>
+        <div class="chart" id="chart"></div>
+      </section>
+
+      <div class="panel strip">
+        <div>
+          <h2>Load 1 / 5 / 15</h2>
+          <p class="mono" id="load3" style="font-size:1.1rem;margin:0.4rem 0 0">—</p>
+        </div>
+        <div>
+          <h2>Host uptime</h2>
+          <p class="mono" id="uptime" style="font-size:1.1rem;margin:0.4rem 0 0">—</p>
+        </div>
+        <div>
+          <h2>Runtime</h2>
+          <p class="mono" id="runtime" style="font-size:1.1rem;margin:0.4rem 0 0">—</p>
+        </div>
+        <div>
+          <h2>Thermal</h2>
+          <p class="mono" id="temp" style="font-size:1.1rem;margin:0.4rem 0 0">—</p>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <section class="panel">
+          <h2>Processors</h2>
+          <div id="cores" style="margin-top:1rem;display:flex;flex-direction:column;gap:0.4rem"></div>
+        </section>
+        <section class="panel">
+          <h2>Memory</h2>
+          <div id="mem-body" style="margin-top:1rem"></div>
+        </section>
+        <section class="panel">
+          <h2>Disk</h2>
+          <div id="disk-body" style="margin-top:1rem"></div>
+        </section>
+        <section class="panel">
+          <h2>Network</h2>
+          <div id="net-body" style="margin-top:1rem"></div>
+        </section>
+      </div>
+
+      <section class="panel">
+        <h2>This app</h2>
+        <p class="subtle" style="font-size:0.8rem;margin:0.75rem 0 1rem">
+          Running on this PC. Spin cores loads every logical processor for 8 seconds so the gauges move.
+        </p>
+        <div class="actions">
+          <div class="seg" role="radiogroup" aria-label="Interval">
+            <button data-ms="1000" class="on">1s</button>
+            <button data-ms="2000">2s</button>
+            <button data-ms="5000">5s</button>
+          </div>
+          <button class="btn" id="spin">Spin cores 8s</button>
+          <button class="btn danger" id="quit">Quit Vitals</button>
+        </div>
+        <p class="subtle" id="proc" style="margin:1rem 0 0;font-size:0.75rem;font-family:var(--mono)"></p>
+      </section>
+
+      <footer>Local only. Nothing is sent off this machine.</footer>
+    </div>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const history = [];
+      let paused = false;
+      let intervalMs = 1000;
+      let timer = null;
+      let last = null;
+      const warn = 70, crit = 90;
+
+      const fmtPct = (n, d = 1) => n == null || Number.isNaN(n) ? "—" : n.toFixed(d) + "%";
+      const clamp = (n) => Math.max(0, Math.min(100, n || 0));
+      function fmtBytes(n) {
+        if (n == null || Number.isNaN(n)) return "—";
+        const u = ["B","KB","MB","GB","TB"];
+        let v = Math.abs(n), i = 0;
+        while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+        return (n < 0 ? "-" : "") + v.toFixed(i === 0 ? 0 : v >= 100 ? 0 : 1) + " " + u[i];
+      }
+      function fmtRate(n) { return n == null ? "—" : fmtBytes(n) + "/s"; }
+      function fmtUp(s) {
+        s = Math.max(0, Math.floor(s || 0));
+        const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+        if (d) return d + "d " + h + "h";
+        if (h) return h + "h " + m + "m";
+        return m + "m " + (s % 60) + "s";
+      }
+      function tone(n) { if (n == null) return "ok"; if (n >= crit) return "crit"; if (n >= warn) return "warn"; return "ok"; }
+      function setMeter(el, n) {
+        const t = tone(n);
+        el.style.transform = "scaleX(" + (clamp(n) / 100) + ")";
+        el.className = t === "ok" ? "" : t;
+      }
+      function setTone(el, n) {
+        el.classList.remove("tone-warn", "tone-crit");
+        const t = tone(n);
+        if (t !== "ok") el.classList.add("tone-" + t);
+      }
+
+      function drawChart(el, pts) {
+        const w = 720, h = 176;
+        if (pts.length < 2) {
+          el.innerHTML = '<p class="muted" style="margin:0;height:11rem;display:flex;align-items:center">Collecting samples…</p>';
+          return;
+        }
+        const path = (key) => pts.map((p, i) => {
+          const x = (i / (pts.length - 1)) * w;
+          const y = h - (clamp(p[key]) / 100) * h;
+          return (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1);
+        }).join(" ");
+        el.innerHTML = '<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true">' +
+          '<path d="'+path("cpu")+'" fill="none" stroke="#b7c0cc" stroke-width="1.6" />' +
+          '<path d="'+path("mem")+'" fill="none" stroke="#8e8e96" stroke-width="1.6" />' +
+          '</svg>';
+      }
+
+      async function tick() {
+        if (paused) return;
+        try {
+          const r = await fetch("/api/snapshot", { cache: "no-store" });
+          if (!r.ok) throw new Error("snapshot " + r.status);
+          const s = await r.json();
+          last = s;
+          render(s);
+        } catch (e) {
+          $("alerts").innerHTML = '<p class="alert">Lost the local sampler. Is Vitals still running?</p>';
+        }
+      }
+
+      function render(s) {
+        $("alerts").innerHTML = "";
+        const alerts = [];
+        if (s.cpu >= crit) alerts.push("CPU at " + fmtPct(s.cpu, 0));
+        if (s.memory.usedPct >= crit) alerts.push("Memory at " + fmtPct(s.memory.usedPct, 0));
+        if (s.disks[0] && s.disks[0].usedPct >= crit) alerts.push("Disk at " + fmtPct(s.disks[0].usedPct, 0));
+        if (alerts.length) $("alerts").innerHTML = '<p class="alert">'+alerts.join(" · ")+'</p>';
+
+        $("host").textContent = s.hostname || "this-pc";
+        $("meta").textContent = [s.platform, s.release, s.arch, (s.cores||[]).length + " cores"].filter(Boolean).join(" · ");
+        $("model").textContent = (s.cores[0] && s.cores[0].model) || "";
+        $("cpu").textContent = fmtPct(s.cpu);
+        setTone($("cpu"), s.cpu);
+        $("cpu-d").textContent = (s.cores||[]).length + " logical";
+        setMeter($("cpu-m"), s.cpu);
+
+        $("mem").textContent = fmtPct(s.memory.usedPct);
+        setTone($("mem"), s.memory.usedPct);
+        $("mem-d").textContent = fmtBytes(s.memory.used) + " / " + fmtBytes(s.memory.total);
+        setMeter($("mem-m"), s.memory.usedPct);
+
+        $("load").textContent = (s.loadavg[0] || 0).toFixed(2);
+        $("load-d").textContent = "pressure " + fmtPct(s.loadPressure, 0);
+        setMeter($("load-m"), s.loadPressure);
+
+        const d0 = s.disks[0];
+        $("disk").textContent = d0 ? fmtPct(d0.usedPct) : "—";
+        setTone($("disk"), d0 ? d0.usedPct : 0);
+        $("disk-d").textContent = d0 ? fmtBytes(d0.available) + " free" : "No volume";
+        setMeter($("disk-m"), d0 ? d0.usedPct : 0);
+
+        $("load3").textContent = s.loadavg.map(n => n.toFixed(2)).join(" / ");
+        $("uptime").textContent = fmtUp(s.uptime);
+        $("runtime").textContent = s.process.go || "Go";
+        $("temp").textContent = s.thermalC == null ? "—" : s.thermalC.toFixed(1) + "°C";
+
+        const compact = (s.cores||[]).length > 8;
+        $("cores").style.display = compact ? "grid" : "flex";
+        $("cores").style.gridTemplateColumns = compact ? "1fr 1fr" : "";
+        $("cores").innerHTML = (s.cores||[]).map(c => {
+          const t = tone(c.pct);
+          return '<div class="core"><b>'+c.index+'</b><div class="meter"><i class="'+(t==="ok"?"":t)+'" style="transform:scaleX('+(clamp(c.pct)/100)+')"></i></div><em>'+fmtPct(c.pct,0)+'</em></div>';
+        }).join("");
+
+        const m = s.memory;
+        const used = m.used, cached = m.cached||0, buffers = m.buffers||0, free = Math.max(0, m.total - used);
+        $("mem-body").innerHTML =
+          '<div class="stack" aria-hidden="true"><i style="width:'+(used/m.total*100)+'%;background:var(--accent)"></i>' +
+          '<i style="width:'+(cached/m.total*100)+'%;background:color-mix(in srgb, var(--accent) 40%, transparent)"></i></div>' +
+          '<div style="margin-top:0.85rem;display:grid;grid-template-columns:1fr 1fr;gap:0.4rem 1rem">' +
+          '<div class="kv"><span>Used</span><span>'+fmtBytes(used)+'</span></div>' +
+          '<div class="kv"><span>Available</span><span>'+fmtBytes(m.available)+'</span></div>' +
+          '<div class="kv"><span>Cached</span><span>'+fmtBytes(cached)+'</span></div>' +
+          '<div class="kv"><span>Swap</span><span>'+(m.swapTotal?fmtPct(m.swapPct,0)+" · "+fmtBytes(m.swapTotal):"—")+'</span></div></div>' +
+          '<p class="subtle" style="margin:0.85rem 0 0;font-size:0.75rem">This process RSS '+fmtBytes(s.process.rss)+' · CPU '+fmtPct(s.process.cpu,0)+'</p>';
+
+        if (!s.disks.length) {
+          $("disk-body").innerHTML = '<p class="muted" style="margin:0">No volume stats.</p>';
+        } else {
+          $("disk-body").innerHTML = s.disks.map(d =>
+            '<div style="margin-bottom:0.9rem"><div class="kv"><span class="mono" style="color:var(--fg)">'+d.mount+'</span><span>'+fmtPct(d.usedPct)+'</span></div>' +
+            '<div class="meter" style="margin:0.4rem 0"><i class="'+(tone(d.usedPct)==="ok"?"":tone(d.usedPct))+'" style="transform:scaleX('+(clamp(d.usedPct)/100)+')"></i></div>' +
+            '<p class="subtle" style="margin:0;font-size:0.75rem">'+fmtBytes(d.used)+' used · '+fmtBytes(d.available)+' free</p></div>'
+          ).join("");
+        }
+
+        const rx = (s.network||[]).reduce((a,n)=>a+n.rx,0);
+        const tx = (s.network||[]).reduce((a,n)=>a+n.tx,0);
+        $("net-body").innerHTML =
+          '<p class="mono" style="margin:0 0 0.75rem">↓ '+fmtRate(rx)+' · ↑ '+fmtRate(tx)+'</p>' +
+          (s.network||[]).map(n =>
+            '<div style="padding:0.65rem 0;border-top:1px solid var(--line)"><div class="kv"><span class="mono" style="color:var(--fg)">'+n.name+(n.internal?' <span class="subtle">loopback</span>':'')+'</span>' +
+            '<span>'+fmtRate(n.rx)+' ↓ · '+fmtRate(n.tx)+' ↑</span></div>' +
+            '<p class="subtle mono" style="margin:0.25rem 0 0;font-size:0.75rem">'+(n.address||"no address")+'</p></div>'
+          ).join("");
+
+        $("proc").textContent = "pid " + s.process.pid + " · " + s.process.name + " · up " + fmtUp(s.process.uptime);
+        $("spin").disabled = !!s.process.spinning;
+        $("spin").textContent = s.process.spinning ? "Spinning cores…" : "Spin cores 8s";
+
+        history.push({ cpu: s.cpu, mem: s.memory.usedPct });
+        if (history.length > 90) history.shift();
+        drawChart($("chart"), history);
+      }
+
+      function clock() {
+        const d = new Date();
+        $("clock").textContent = [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2,"0")).join(":");
+      }
+
+      function loop() {
+        if (timer) clearInterval(timer);
+        tick();
+        timer = setInterval(tick, intervalMs);
+      }
+
+      $("pause").onclick = () => {
+        paused = !paused;
+        $("live").classList.toggle("paused", paused);
+        $("live-label").textContent = paused ? "Paused" : "Live";
+        $("pause").textContent = paused ? "Resume" : "Pause";
+        if (!paused) loop();
+        else if (timer) clearInterval(timer);
+      };
+      $("copy").onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(JSON.stringify(last, null, 2));
+          $("copy").textContent = "Copied";
+          setTimeout(() => $("copy").textContent = "Copy", 1200);
+        } catch { $("copy").textContent = "Failed"; }
+      };
+      $("spin").onclick = async () => {
+        $("spin").disabled = true;
+        await fetch("/api/spin", { method: "POST" });
+      };
+      $("quit").onclick = async () => {
+        await fetch("/api/quit", { method: "POST" });
+        document.body.innerHTML = '<p style="padding:3rem;text-align:center;color:#8e8e96">Vitals has quit.</p>';
+      };
+      document.querySelectorAll(".seg button").forEach((b) => {
+        b.onclick = () => {
+          document.querySelectorAll(".seg button").forEach((x) => x.classList.remove("on"));
+          b.classList.add("on");
+          intervalMs = Number(b.dataset.ms);
+          loop();
+        };
+      });
+      clock();
+      setInterval(clock, 1000);
+      loop();
+    </script>
+  </body>
+</html>
